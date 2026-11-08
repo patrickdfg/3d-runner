@@ -6,9 +6,11 @@
 </style></head><body>
 <div id="hud"><div class="stat"><small>DISTANCE</small><b id="distance">0</b></div><div class="stat"><small>COINS</small><b class="coin" id="coins">0</b></div><div class="stat"><small>BEST</small><b id="best">0</b></div><button id="pause" aria-label="일시정지">Ⅱ</button></div>
 <div id="toast"></div><div id="controls"><div class="cluster"><button class="ctrl" id="left" aria-label="왼쪽">◀</button><button class="ctrl" id="right" aria-label="오른쪽">▶</button></div><div class="right"><button class="ctrl" id="slide" aria-label="슬라이딩">↓<span>슬라이드</span></button><button class="ctrl" id="jump" aria-label="점프">↑<span>점프</span></button></div></div>
-<div id="overlay"><div class="panel"><div class="eyebrow">✦ LOW POLY ADVENTURE ✦</div><h1 id="headline">SKY<br>RUNNER</h1><p id="message">구름 위의 길을 달리세요!<br>장애물을 피하고 반짝이는 코인을 모으세요.</p><div id="results" class="results" style="display:none"></div><button class="primary" id="start">게임 시작 ▶</button><div class="sub">PC ← → 이동 · ↑/Space 점프 · ↓ 슬라이드<br>모바일 스와이프 또는 화면 버튼</div></div></div>
+<div id="overlay"><div class="panel"><div class="eyebrow">✦ BLENDER GLB ADVENTURE ✦</div><h1 id="headline">SKY<br>RUNNER</h1><p id="message">구름 위의 길을 달리세요!<br>장애물을 피하고 반짝이는 코인을 모으세요.</p><div id="results" class="results" style="display:none"></div><button class="primary" id="start">게임 시작 ▶</button><div class="sub">PC ← → 이동 · ↑/Space 점프 · ↓ 슬라이드<br>모바일 스와이프 또는 화면 버튼</div></div></div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
 <script type="module">
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 const $=id=>document.getElementById(id);
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x83c9ee);scene.fog=new THREE.FogExp2(0x83c9ee,.014);
 const camera=new THREE.PerspectiveCamera(64,innerWidth/innerHeight,.1,180);camera.position.set(0,5.7,12);camera.lookAt(0,1,-15);
@@ -26,6 +28,21 @@ const runner=new THREE.Group();scene.add(runner);const body=new THREE.Group();ru
 const skin=mat(0xffd2a3),hair=mat(0x304b87),shirt=mat(0xffb83e),pants=mat(0x3374bb),shoes=mat(0xfef7ec),eyes=mat(0x24344c);
 cube(.85,.9,.48,shirt,body,0,1.35,0);cube(.68,.68,.62,skin,body,0,2.17,0);cube(.75,.22,.7,hair,body,0,2.56,-.03);for(let i=-1;i<=1;i++){const spike=mesh(new THREE.ConeGeometry(.22,.55,5),hair,body);spike.position.set(i*.24,2.76,-.07);spike.rotation.z=-.25}for(const x of [-.18,.18])cube(.1,.14,.055,eyes,body,x,2.2,.33);
 const leftArm=new THREE.Group(),rightArm=new THREE.Group(),leftLeg=new THREE.Group(),rightLeg=new THREE.Group();body.add(leftArm,rightArm,leftLeg,rightLeg);leftArm.position.set(-.56,1.65,0);rightArm.position.set(.56,1.65,0);leftLeg.position.set(-.23,.93,0);rightLeg.position.set(.23,.93,0);cube(.24,.72,.27,shirt,leftArm,0,-.34,0);cube(.24,.72,.27,shirt,rightArm,0,-.34,0);cube(.23,.2,.24,skin,leftArm,0,-.76,0);cube(.23,.2,.24,skin,rightArm,0,-.76,0);cube(.32,.76,.32,pants,leftLeg,0,-.36,0);cube(.32,.76,.32,pants,rightLeg,0,-.36,0);cube(.37,.18,.56,shoes,leftLeg,0,-.79,.13);cube(.37,.18,.56,shoes,rightLeg,0,-.79,.13);
+// Blender에서 편집 가능한 GLB 캐릭터를 우선 사용하고 실패하면 기존 캐릭터로 돌아갑니다.
+let glbAvatar=null,glbLimbs=null;
+new GLTFLoader().load('./assets/runner.glb',gltf=>{
+  const model=gltf.scene;
+  model.traverse(node=>{if(node.isMesh){node.castShadow=true;node.receiveShadow=true}});
+  runner.add(model);
+  glbAvatar=model;
+  glbLimbs={
+    leftArm:model.getObjectByName('LeftArm'),
+    rightArm:model.getObjectByName('RightArm'),
+    leftLeg:model.getObjectByName('LeftLeg'),
+    rightLeg:model.getObjectByName('RightLeg')
+  };
+  body.visible=false;
+},undefined,error=>console.warn('GLB 로드 실패: 기본 캐릭터를 사용합니다.',error));
 const shadow=mesh(new THREE.CircleGeometry(.62,20),new THREE.MeshBasicMaterial({color:0x35422a,transparent:true,opacity:.23,depthWrite:false}));shadow.rotation.x=-Math.PI/2;shadow.position.set(0,.245,0);shadow.castShadow=false;
 const items=[];const lanes=[-2.3,0,2.3];let lane=1,y=0,vy=0,slideTime=0,runTime=0,travel=0,coins=0,speed=12,spawnAt=24,state='menu',best=0,toastTime=0;
 try{best=Number(localStorage.getItem('sky-runner-best'))||0}catch(e){}$('best').textContent=best;
@@ -49,7 +66,18 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden&&state==='p
 const clock=new THREE.Clock();function tick(){const dt=Math.min(clock.getDelta(),.045);if(state==='playing'){runTime+=dt;speed=Math.min(27,12+travel/125);travel+=speed*dt;spawnAt-=speed*dt;if(spawnAt<=0){spawn();spawnAt=16+Math.random()*7}vy-=24*dt;y=Math.max(0,y+vy*dt);if(y===0)vy=0;slideTime=Math.max(0,slideTime-dt);
 runner.position.x=THREE.MathUtils.damp(runner.position.x,lanes[lane],13,dt);runner.position.y=y;runner.rotation.z=THREE.MathUtils.damp(runner.rotation.z,(lanes[lane]-runner.position.x)*-.07,6,dt);
 body.scale.y=THREE.MathUtils.damp(body.scale.y,slideTime>0?.55:1,14,dt);body.position.y=slideTime>0?-.02:Math.sin(runTime*14)*.055;
-const swing=Math.sin(runTime*15)*.65;leftLeg.rotation.x=swing;rightLeg.rotation.x=-swing;leftArm.rotation.x=-swing;rightArm.rotation.x=swing;shadow.position.x=runner.position.x;shadow.material.opacity=.22/(1+y*.6);
+const swing=Math.sin(runTime*15)*.65;
+if(glbAvatar){
+  glbAvatar.scale.y=THREE.MathUtils.damp(glbAvatar.scale.y,slideTime>0?.55:1,14,dt);
+  glbAvatar.position.y=slideTime>0?-.02:Math.sin(runTime*14)*.055;
+  if(glbLimbs.leftLeg)glbLimbs.leftLeg.rotation.x=swing;
+  if(glbLimbs.rightLeg)glbLimbs.rightLeg.rotation.x=-swing;
+  if(glbLimbs.leftArm)glbLimbs.leftArm.rotation.x=-swing;
+  if(glbLimbs.rightArm)glbLimbs.rightArm.rotation.x=swing;
+}else{
+  leftLeg.rotation.x=swing;rightLeg.rotation.x=-swing;
+  leftArm.rotation.x=-swing;rightArm.rotation.x=swing;
+}shadow.position.x=runner.position.x;shadow.material.opacity=.22/(1+y*.6);
 for(const t of tiles){t.position.z+=speed*dt;if(t.position.z>20)t.position.z-=COUNT*TILE}
 for(const c of clouds){c.position.z+=speed*dt*.32;if(c.position.z>28)c.position.z-=220}
 for(let i=items.length-1;i>=0;i--){const o=items[i];o.group.position.z+=speed*dt;if(o.type==='coin'){o.group.rotation.y+=dt*4;o.group.position.y=Math.sin(runTime*5+i)*.13}if(!o.hit&&Math.abs(o.group.position.z)<.85&&Math.abs(runner.position.x-lanes[o.lane])<.85){if(o.type==='coin'){o.hit=true;coins++;showToast('+1 🪙');o.group.visible=false}else if(o.type==='rock'&&y<1.12||o.type==='bar'&&slideTime<=0){finish();break}}if(o.group.position.z>19){o.group.removeFromParent();items.splice(i,1)}}
